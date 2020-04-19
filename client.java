@@ -16,7 +16,7 @@ public class client {
 	 * (ERROR)
 	 */
 
-	private static final String TFTP_SERVER_IP = "192.168.1.11";
+	private static final String TFTP_SERVER_IP = "192.168.1.40";// use your ip
 	private static final int TFTP_DEFAULT_PORT = 69;
 
 	// TFTP OP Code
@@ -35,7 +35,7 @@ public class client {
 	private DatagramPacket inBoundDatagramPacket;
 
 	public static void main(String[] args) throws IOException {
-		String fileName = "TFTP.pdf";
+		String fileName = "vvlog.txt";
 		client tFTPClientNet = new client();
 		tFTPClientNet.get(fileName);
 	}
