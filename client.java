@@ -16,11 +16,12 @@ public class client {
 	 * (ERROR)
 	 */
 
-	private static final String TFTP_SERVER_IP = "192.168.1.40";// use your ip
+	private static final String TFTP_SERVER_IP = "192.168.1.40"; //IP of server
 	private static final int TFTP_DEFAULT_PORT = 69;
 
 	// TFTP OP Code
 	private static final byte OP_RRQ = 1;
+	private static final byte OP_WRQ = 2;
 	private static final byte OP_DATAPACKET = 3;
 	private static final byte OP_ACK = 4;
 	private static final byte OP_ERROR = 5;
@@ -30,14 +31,16 @@ public class client {
 	private DatagramSocket datagramSocket = null;
 	private InetAddress inetAddress = null;
 	private byte[] requestByteArray;
-	private byte[] bufferByteArray;
+	private byte[] BuffByteArray;
 	private DatagramPacket outBoundDatagramPacket;
 	private DatagramPacket inBoundDatagramPacket;
 
 	public static void main(String[] args) throws IOException {
 		String fileName = "vvlog.txt";
+		String fileName2 = "TestDocElkyR.txt";
 		client tFTPClientNet = new client();
 		tFTPClientNet.get(fileName);
+		tFTPClientNet.put(fileName2);
 	}
 
 	private void get(String fileName) throws IOException {
@@ -59,28 +62,82 @@ public class client {
 		writeFile(byteOutOS, fileName);
 	}
 
+	private void put(String fileName) throws IOException {
+
+		// STEP0: prepare for communication
+		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
+		datagramSocket = new DatagramSocket();
+		requestByteArray = createRequest(OP_WRQ, fileName, "octet");
+		outBoundDatagramPacket = new DatagramPacket(requestByteArray,
+				requestByteArray.length, inetAddress, TFTP_DEFAULT_PORT);
+
+		// STEP 1: sending request RRQ to TFTP server fo a file
+		datagramSocket.send(outBoundDatagramPacket);
+
+		// STEP 2: receive file from TFTP server
+		ByteArrayOutputStream byteOutOS = pushFile();
+
+		// STEP 3: write file to local disc
+		writeFile(byteOutOS, fileName);
+	}
+
 	private ByteArrayOutputStream receiveFile() throws IOException {
 		ByteArrayOutputStream byteOutOS = new ByteArrayOutputStream();
 		int block = 1;
 		do {
 			System.out.println("TFTP Packet count: " + block);
 			block++;
-			bufferByteArray = new byte[PACKET_SIZE];
-			inBoundDatagramPacket = new DatagramPacket(bufferByteArray,
-					bufferByteArray.length, inetAddress,
+			BuffByteArray = new byte[PACKET_SIZE];
+			inBoundDatagramPacket = new DatagramPacket(BuffByteArray,
+					BuffByteArray.length, inetAddress,
 					datagramSocket.getLocalPort());
 			
 			//STEP 2.1: receive packet from TFTP server
 			datagramSocket.receive(inBoundDatagramPacket);
 
 			// Getting the first 4 characters from the TFTP packet
-			byte[] opCode = { bufferByteArray[0], bufferByteArray[1] };
+			byte[] opCode = { BuffByteArray[0], BuffByteArray[1] };
 
 			if (opCode[1] == OP_ERROR) {
 				reportError();
 			} else if (opCode[1] == OP_DATAPACKET) {
 				// Check for the TFTP packets block number
-				byte[] blockNumber = { bufferByteArray[2], bufferByteArray[3] };
+				byte[] blockNumber = { BuffByteArray[2], BuffByteArray[3] };
+
+				DataOutputStream dos = new DataOutputStream(byteOutOS);
+				dos.write(inBoundDatagramPacket.getData(), 4,
+						inBoundDatagramPacket.getLength() - 4);
+
+				//STEP 2.2: send ACK to TFTP server for received packet
+				sendAcknowledgment(blockNumber);
+			}
+
+		} while (!isLastPacket(inBoundDatagramPacket));
+		return byteOutOS;
+	}
+
+	private ByteArrayOutputStream pushFile() throws IOException {
+		ByteArrayOutputStream byteOutOS = new ByteArrayOutputStream();
+		int block = 1;
+		do {
+			System.out.println("TFTP Packet count: " + block);
+			block++;
+			BuffByteArray = new byte[PACKET_SIZE];
+			inBoundDatagramPacket = new DatagramPacket(BuffByteArray,
+					BuffByteArray.length, inetAddress,
+					datagramSocket.getPort());
+			
+			//STEP 2.1: send packet from TFTP server
+			datagramSocket.receive(inBoundDatagramPacket);
+
+			// Getting the first 4 characters from the TFTP packet
+			byte[] opCode = { BuffByteArray[0], BuffByteArray[1] };
+
+			if (opCode[1] == OP_ERROR) {
+				reportError();
+			} else if (opCode[1] == OP_DATAPACKET) {
+				// Check for the TFTP packets block number
+				byte[] blockNumber = { BuffByteArray[2], BuffByteArray[3] };
 
 				DataOutputStream dos = new DataOutputStream(byteOutOS);
 				dos.write(inBoundDatagramPacket.getData(), 4,
@@ -111,8 +168,8 @@ public class client {
 	}
 
 	private void reportError() {
-		String errorCode = new String(bufferByteArray, 3, 1);
-		String errorText = new String(bufferByteArray, 4,
+		String errorCode = new String(BuffByteArray, 3, 1);
+		String errorText = new String(BuffByteArray, 4,
 				inBoundDatagramPacket.getLength() - 4);
 		System.err.println("Error: " + errorCode + " " + errorText);
 	}
