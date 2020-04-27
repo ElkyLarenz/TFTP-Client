@@ -41,7 +41,7 @@ public class TFTPClient
 	
 	public static final String MODE = "octet";
 	
-	public static String receivefilename = "snow.jpg";
+	public static String receivefilename = "primes.txt";
 	public static String sendfilename = "TestDocElkyR.txt";
 	
 	public static void main(String[] args)
@@ -92,7 +92,7 @@ public class TFTPClient
 			{
 				block++;
 				byte[] buffByteArray = new byte[PACKET_SIZE];
-				
+				checkError(buffByteArray);
 				DatagramPacket inPacket = new DatagramPacket(buffByteArray, buffByteArray.length, address, socket.getLocalPort());
 				
 				socket.receive(inPacket);
@@ -118,8 +118,6 @@ public class TFTPClient
 			// Write file to disk
 			OutputStream outStream = new FileOutputStream(receivefilename);
 			stream.writeTo(outStream);
-			
-			
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (SocketException e) {
@@ -167,6 +165,7 @@ public class TFTPClient
 			byte[] receivePacket = new byte[PACKET_SIZE];
 			DatagramPacket ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
 			socket.receive(ackReceive);
+			checkError(receivePacket);
 			
 			if (receivePacket[1] == (byte) 4)
 			{
@@ -202,6 +201,7 @@ public class TFTPClient
 						receivePacket = new byte[PACKET_SIZE];
 						ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
 						socket.receive(ackReceive);
+						checkError(receivePacket);
 						
 						if (receivePacket[1] == (byte) 4)
 						{
@@ -215,7 +215,8 @@ public class TFTPClient
 						// Check that the block bytes match
 						if (receivePacket[2] != blockBytes[0] || receivePacket[3] != blockBytes[1])
 						{
-							System.out.println("Packet lost?");
+							System.out.println("Got block " + (int) receivePacket[2] + " " + (int) receivePacket[3]);
+							System.out.println("Expected block " + (int) blockBytes[0] + " " + (int) blockBytes[1]);
 							throw new SocketTimeoutException();
 						}
 					} catch (SocketTimeoutException e)
@@ -244,6 +245,56 @@ public class TFTPClient
 		} catch (TFTPException e)
 		{
 			System.out.println("Connection failed.");
+		}
+	}
+	
+	static void checkError(byte[] receivePacket)
+	{
+		if (receivePacket[1] == (byte) 5)
+		{
+			String errorMessage = null;
+			char[] messArray = new char[receivePacket.length - 4];
+			
+			int errorcode = (int) receivePacket[3];
+			
+			switch(errorcode)
+			{
+			case 0:
+				errorMessage = "Not defined, see error message";
+				break;
+			case 1:
+				errorMessage = "File not found";
+				break;
+			case 2:
+				errorMessage = "Access violation";
+				break;
+			case 3:
+				errorMessage = "Disk full or allocation exceeded";
+				break;
+			case 4:
+				errorMessage = "Illegal TFTP operation";
+				break;
+			case 5:
+				errorMessage = "Unknown transfer ID";
+				break;
+			case 6:
+				errorMessage = "File already exists";
+				break;
+			case 7:
+				errorMessage = "No such user";
+				break;
+			}
+			
+			for (int i = 4; i < receivePacket.length - 1; i++)
+			{
+				char chara = (char) receivePacket[i];
+				messArray[i-4] = chara;
+			}
+			
+			String errorstring = new String(messArray);
+			
+			System.out.println("Error code " + errorcode + ": " + errorMessage);
+			System.out.println(errorstring);
 		}
 	}
 }
