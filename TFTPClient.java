@@ -27,7 +27,7 @@ class TFTPException extends Exception
 
 public class TFTPClient
 {
-	public static final String IP = "127.0.0.1";
+	public static final String IP = "199.17.161.104";
 	public static final int PORT = 69;
 	
 	public static final byte RRQ = 1;
@@ -41,7 +41,7 @@ public class TFTPClient
 	
 	public static final String MODE = "octet";
 	
-	public static String receivefilename = "vvlog.txt";
+	public static String receivefilename = "snow.jpg";
 	public static String sendfilename = "TestDocElkyR.txt";
 	
 	public static void main(String[] args)
