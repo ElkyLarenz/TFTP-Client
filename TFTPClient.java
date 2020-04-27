@@ -79,6 +79,7 @@ public class TFTPClient
 			
 			packet[pos] = zero;
 			
+			System.out.println("Attempting connection to read");
 			DatagramPacket out = new DatagramPacket(packet, packet.length, address, PORT);
 			
 			socket.send(out);
@@ -118,6 +119,8 @@ public class TFTPClient
 			// Write file to disk
 			OutputStream outStream = new FileOutputStream(receivefilename);
 			stream.writeTo(outStream);
+			
+			System.out.println("File read successfully: " + receivefilename);
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
 		} catch (SocketException e) {
@@ -157,7 +160,7 @@ public class TFTPClient
 			}
 			
 			packet[pos] = zero;
-			
+			System.out.println("Attempting connection to write");
 			DatagramPacket out = new DatagramPacket(packet, packet.length, address, PORT);
 			// Send write request
 			socket.send(out);
@@ -166,21 +169,23 @@ public class TFTPClient
 			DatagramPacket ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
 			socket.receive(ackReceive);
 			checkError(receivePacket);
+			int port = ackReceive.getPort();
 			
 			if (receivePacket[1] == (byte) 4)
 			{
-				System.out.println("Server is ready to receive file");
+				System.out.println("Server ready to receive file: " + sendfilename);
 			}
 			
 			int bytesRead = PACKET_SIZE;
-			short block = 0;
+			short block = 1;
 			
 			while (bytesRead == PACKET_SIZE)
 			{
-				block++;
-				byte[] blockBytes = { (byte) (block & 0xff), (byte) ((block >>> 8) & 0xff) };
+//				byte[] blockBytes = { (byte) (block & 0xff), (byte) ((block >>> 8) & 0xff) };
+				byte[] blockBytes = { (byte) ((block >>> 8) & 0xff), (byte) (block & 0xff) };
 				byte[] dataPacket = new byte[PACKET_SIZE];
 				pos = 0;
+				block++;
 				
 				dataPacket[pos++] = zero;
 				dataPacket[pos++] = DATA;
@@ -188,8 +193,12 @@ public class TFTPClient
 				dataPacket[pos] = blockBytes[1];
 				
 				bytesRead = file.read(dataPacket, 4, DATA_SIZE) + 4;
+				System.out.println("bytesRead " + bytesRead);
 				
-				DatagramPacket outData = new DatagramPacket(dataPacket, dataPacket.length, address, PORT);
+				System.out.println("SENDING:");
+				printPacket(dataPacket);
+				
+				DatagramPacket outData = new DatagramPacket(dataPacket, dataPacket.length, address, port);
 				
 				socket.send(outData);
 				
@@ -205,7 +214,7 @@ public class TFTPClient
 						
 						if (receivePacket[1] == (byte) 4)
 						{
-							System.out.println("Got ack");
+//							System.out.println("Got ack");
 						} else
 						{
 							// some error probably occurred.
@@ -215,10 +224,14 @@ public class TFTPClient
 						// Check that the block bytes match
 						if (receivePacket[2] != blockBytes[0] || receivePacket[3] != blockBytes[1])
 						{
-							System.out.println("Got block " + (int) receivePacket[2] + " " + (int) receivePacket[3]);
-							System.out.println("Expected block " + (int) blockBytes[0] + " " + (int) blockBytes[1]);
+							System.out.println("RECEIVED WRONG ACK:");
+							printPacket(receivePacket);
 							throw new SocketTimeoutException();
 						}
+						System.out.println("RECEIVED:");
+						printPacket(receivePacket);
+						
+						break;
 					} catch (SocketTimeoutException e)
 					{
 						System.out.println("Timeout, retry send");
@@ -236,7 +249,7 @@ public class TFTPClient
 			file.close();
 			socket.close();
 			
-			System.out.println("Finished!");
+			System.out.println("\nFinished!");
 			
 		} catch (SocketException | FileNotFoundException | UnknownHostException e) {
 			e.printStackTrace();
@@ -296,5 +309,11 @@ public class TFTPClient
 			System.out.println("Error code " + errorcode + ": " + errorMessage);
 			System.out.println(errorstring);
 		}
+	}
+	
+	static void printPacket(byte[] packet)
+	{
+		System.out.println("OPCode: " + (int) packet[0] + " " + (int) packet[1]);
+		System.out.println("Block#: " + (int) packet[2] + " " + (int) packet[3]);
 	}
 }
