@@ -13,13 +13,13 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.concurrent.TimeoutException;
 
 public class client {
 	//
-	private static final String TFTP_SERVER_IP = "192.168.1.40"; //IP of server
+	private static final String TFTP_SERVER_IP = "192.168.1.40"; // IP of server
 	private static final int PORT = 69;
 
-	
 	private static final byte RRQ = 1;
 	private static final byte WRQ = 2;
 	private static final byte DATA = 3;
@@ -37,26 +37,26 @@ public class client {
 	private DatagramPacket inBoundDatagramPacket;
 
 	public static final String MODE = "octet";
-	
+
 	public static String filename2 = "TestDocElkyR.txt";
+
 	public static void main(String[] args) throws IOException {
 		String fileName = "vvlog.txt";
-		//String fileName2 = "TestDocElkyR.txt";
+		// String fileName2 = "TestDocElkyR.txt";
 		client tFTPClientNet = new client();
 		tFTPClientNet.get(fileName);
 		wrq();
-		
+
 	}
 
 	private void get(String fileName) throws IOException {
-		
+
 		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
 		datagramSocket = new DatagramSocket();
 		requestByteArray = createRequest(RRQ, fileName, "octet");
-		outBoundDatagramPacket = new DatagramPacket(requestByteArray,
-				requestByteArray.length, inetAddress, PORT);
+		outBoundDatagramPacket = new DatagramPacket(requestByteArray, requestByteArray.length, inetAddress, PORT);
 
-		//SENDS request RRQ to TFTP server fo a file
+		// SENDS request RRQ to TFTP server fo a file
 		datagramSocket.send(outBoundDatagramPacket);
 		//
 		ByteArrayOutputStream byteOutOS = receiveFile();
@@ -64,106 +64,94 @@ public class client {
 		writeFile(byteOutOS, fileName);
 	}
 
-	public static void wrq()
-	{
+	public static void wrq() {
 		try {
 			DatagramSocket socket = new DatagramSocket();
 			InetAddress address = InetAddress.getByName(TFTP_SERVER_IP);
 			FileInputStream file = new FileInputStream(filename2);
 			int timeout = 5;
-			
+
 			int length = 2 + filename2.length() + 1 + MODE.length() + 1;
 			byte[] packet = new byte[length];
-			
+
 			byte zero = 0;
 			int pos = 0;
-			
+
 			packet[pos++] = zero;
 			packet[pos++] = WRQ;
-			
-			for ( int i = 0; i < filename2.length(); i++)
-			{
+
+			for (int i = 0; i < filename2.length(); i++) {
 				packet[pos++] = (byte) filename2.charAt(i);
 			}
-			
+
 			packet[pos++] = zero;
-			
-			for (int i = 0; i < MODE.length(); i++)
-			{
+
+			for (int i = 0; i < MODE.length(); i++) {
 				packet[pos++] = (byte) MODE.charAt(i);
 			}
-			
+
 			packet[pos] = zero;
-			
+
 			DatagramPacket out = new DatagramPacket(packet, packet.length, address, PORT);
 			// Send write request
 			socket.send(out);
-			
+
 			byte[] receivePacket = new byte[PACKET_SIZE];
 			DatagramPacket ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
 			socket.receive(ackReceive);
-			
-			if (receivePacket[1] == (byte) 4)
-			{
+
+			if (receivePacket[1] == (byte) 4) {
 				System.out.println("Server is ready to receive file");
 			}
-			
+
 			int bytesRead = PACKET_SIZE;
 			short block = 0;
-			
-			while (bytesRead == PACKET_SIZE)
-			{
+
+			while (bytesRead == PACKET_SIZE) {
 				block++;
 				byte[] blockBytes = { (byte) (block & 0xff), (byte) ((block >>> 8) & 0xff) };
 				byte[] dataPacket = new byte[PACKET_SIZE];
 				pos = 0;
-				
+
 				dataPacket[pos++] = zero;
 				dataPacket[pos++] = DATA;
 				dataPacket[pos++] = blockBytes[0];
 				dataPacket[pos] = blockBytes[1];
-				
+
 				bytesRead = file.read(dataPacket, 4, DATA_SIZE) + 4;
-				
+
 				DatagramPacket outData = new DatagramPacket(dataPacket, dataPacket.length, address, PORT);
-				
+
 				socket.send(outData);
-				
-				while (timeout != 0)
-				{
-					try
-					{
+
+				while (timeout != 0) {
+					try {
 						// receive ack
 						receivePacket = new byte[PACKET_SIZE];
 						ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
 						socket.receive(ackReceive);
-						
-						if (receivePacket[1] == (byte) 4)
-						{
+
+						if (receivePacket[1] == (byte) 4) {
 							System.out.println("Got ack");
-						} else
-						{
+						} else {
 							// some error probably occurred.
 							break;
 						}
-						
+
 						// Check that the block bytes match
-						if (receivePacket[2] != blockBytes[0] || receivePacket[3] != blockBytes[1])
-						{
+						if (receivePacket[2] != blockBytes[0] || receivePacket[3] != blockBytes[1]) {
 							System.out.println("Packet lost?");
 							throw new SocketTimeoutException();
 						}
-					} catch (SocketTimeoutException e)
-					{
+					} catch (SocketTimeoutException e) {
 						System.out.println("Timeout, retry send");
 						socket.send(outData);
 						timeout--;
 					}
 				}
-				
-				if (timeout == 0)
-				{
-					throw new TFTPException();
+
+				if (timeout == 0) {
+					throw new TimeoutException();
 				}
 			}
 			
@@ -177,7 +165,7 @@ public class client {
 		} catch (IOException e) {
 			
 			e.printStackTrace();
-		} catch (TFTPException e)
+		} catch (Exception e)
 		{
 			System.out.println("Connection failed.");
 		}
