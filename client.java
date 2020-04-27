@@ -1,32 +1,33 @@
+
 //-------------------------------------------------------------         EXAMPLE      --------------------------------------------------------
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 
 public class client {
-
-	/*
-	 * TFTP Protocol As per RFC 1350 opcode - operation 1 - Read request (RRQ) 2
-	 * - Write request (WRQ) 3 - Data (DATA) 4 - Acknowledgment (ACK) 5 - Error
-	 * (ERROR)
-	 */
-
+	//
 	private static final String TFTP_SERVER_IP = "192.168.1.40"; //IP of server
-	private static final int TFTP_DEFAULT_PORT = 69;
+	private static final int PORT = 69;
 
-	// TFTP OP Code
-	private static final byte OP_RRQ = 1;
-	private static final byte OP_WRQ = 2;
-	private static final byte OP_DATAPACKET = 3;
-	private static final byte OP_ACK = 4;
-	private static final byte OP_ERROR = 5;
+	
+	private static final byte RRQ = 1;
+	private static final byte WRQ = 2;
+	private static final byte DATA = 3;
+	private static final byte ACK = 4;
+	private static final byte ERROR = 5;
 
 	private final static int PACKET_SIZE = 516;
+	public static final int DATA_SIZE = 512;
 
 	private DatagramSocket datagramSocket = null;
 	private InetAddress inetAddress = null;
@@ -35,50 +36,151 @@ public class client {
 	private DatagramPacket outBoundDatagramPacket;
 	private DatagramPacket inBoundDatagramPacket;
 
+	public static final String MODE = "octet";
+	
+	public static String filename2 = "TestDocElkyR.txt";
 	public static void main(String[] args) throws IOException {
 		String fileName = "vvlog.txt";
-		String fileName2 = "TestDocElkyR.txt";
+		//String fileName2 = "TestDocElkyR.txt";
 		client tFTPClientNet = new client();
 		tFTPClientNet.get(fileName);
-		tFTPClientNet.put(fileName2);
+		wrq();
+		
 	}
 
 	private void get(String fileName) throws IOException {
-
-		// STEP0: prepare for communication
+		
 		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
 		datagramSocket = new DatagramSocket();
-		requestByteArray = createRequest(OP_RRQ, fileName, "octet");
+		requestByteArray = createRequest(RRQ, fileName, "octet");
 		outBoundDatagramPacket = new DatagramPacket(requestByteArray,
-				requestByteArray.length, inetAddress, TFTP_DEFAULT_PORT);
+				requestByteArray.length, inetAddress, PORT);
 
-		// STEP 1: sending request RRQ to TFTP server fo a file
+		//SENDS request RRQ to TFTP server fo a file
 		datagramSocket.send(outBoundDatagramPacket);
-
-		// STEP 2: receive file from TFTP server
+		//
 		ByteArrayOutputStream byteOutOS = receiveFile();
-
-		// STEP 3: write file to local disc
+		//
 		writeFile(byteOutOS, fileName);
 	}
 
-	private void put(String fileName) throws IOException {
-
-		// STEP0: prepare for communication
-		inetAddress = InetAddress.getByName(TFTP_SERVER_IP);
-		datagramSocket = new DatagramSocket();
-		requestByteArray = createRequest(OP_WRQ, fileName, "octet");
-		outBoundDatagramPacket = new DatagramPacket(requestByteArray,
-				requestByteArray.length, inetAddress, TFTP_DEFAULT_PORT);
-
-		// STEP 1: sending request RRQ to TFTP server fo a file
-		datagramSocket.send(outBoundDatagramPacket);
-
-		// STEP 2: receive file from TFTP server
-		ByteArrayOutputStream byteOutOS = pushFile();
-
-		// STEP 3: write file to local disc
-		writeFile(byteOutOS, fileName);
+	public static void wrq()
+	{
+		try {
+			DatagramSocket socket = new DatagramSocket();
+			InetAddress address = InetAddress.getByName(TFTP_SERVER_IP);
+			FileInputStream file = new FileInputStream(filename2);
+			int timeout = 5;
+			
+			int length = 2 + filename2.length() + 1 + MODE.length() + 1;
+			byte[] packet = new byte[length];
+			
+			byte zero = 0;
+			int pos = 0;
+			
+			packet[pos++] = zero;
+			packet[pos++] = WRQ;
+			
+			for ( int i = 0; i < filename2.length(); i++)
+			{
+				packet[pos++] = (byte) filename2.charAt(i);
+			}
+			
+			packet[pos++] = zero;
+			
+			for (int i = 0; i < MODE.length(); i++)
+			{
+				packet[pos++] = (byte) MODE.charAt(i);
+			}
+			
+			packet[pos] = zero;
+			
+			DatagramPacket out = new DatagramPacket(packet, packet.length, address, PORT);
+			// Send write request
+			socket.send(out);
+			
+			byte[] receivePacket = new byte[PACKET_SIZE];
+			DatagramPacket ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
+			socket.receive(ackReceive);
+			
+			if (receivePacket[1] == (byte) 4)
+			{
+				System.out.println("Server is ready to receive file");
+			}
+			
+			int bytesRead = PACKET_SIZE;
+			short block = 0;
+			
+			while (bytesRead == PACKET_SIZE)
+			{
+				block++;
+				byte[] blockBytes = { (byte) (block & 0xff), (byte) ((block >>> 8) & 0xff) };
+				byte[] dataPacket = new byte[PACKET_SIZE];
+				pos = 0;
+				
+				dataPacket[pos++] = zero;
+				dataPacket[pos++] = DATA;
+				dataPacket[pos++] = blockBytes[0];
+				dataPacket[pos] = blockBytes[1];
+				
+				bytesRead = file.read(dataPacket, 4, DATA_SIZE) + 4;
+				
+				DatagramPacket outData = new DatagramPacket(dataPacket, dataPacket.length, address, PORT);
+				
+				socket.send(outData);
+				
+				while (timeout != 0)
+				{
+					try
+					{
+						// receive ack
+						receivePacket = new byte[PACKET_SIZE];
+						ackReceive = new DatagramPacket(receivePacket, PACKET_SIZE);
+						socket.receive(ackReceive);
+						
+						if (receivePacket[1] == (byte) 4)
+						{
+							System.out.println("Got ack");
+						} else
+						{
+							// some error probably occurred.
+							break;
+						}
+						
+						// Check that the block bytes match
+						if (receivePacket[2] != blockBytes[0] || receivePacket[3] != blockBytes[1])
+						{
+							System.out.println("Packet lost?");
+							throw new SocketTimeoutException();
+						}
+					} catch (SocketTimeoutException e)
+					{
+						System.out.println("Timeout, retry send");
+						socket.send(outData);
+						timeout--;
+					}
+				}
+				
+				if (timeout == 0)
+				{
+					throw new TFTPException();
+				}
+			}
+			
+			file.close();
+			socket.close();
+			
+			System.out.println("Finished!");
+			
+		} catch (SocketException | FileNotFoundException | UnknownHostException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			
+			e.printStackTrace();
+		} catch (TFTPException e)
+		{
+			System.out.println("Connection failed.");
+		}
 	}
 
 	private ByteArrayOutputStream receiveFile() throws IOException {
@@ -92,50 +194,15 @@ public class client {
 					BuffByteArray.length, inetAddress,
 					datagramSocket.getLocalPort());
 			
-			//STEP 2.1: receive packet from TFTP server
+			//
 			datagramSocket.receive(inBoundDatagramPacket);
 
-			// Getting the first 4 characters from the TFTP packet
-			byte[] opCode = { BuffByteArray[0], BuffByteArray[1] };
-
-			if (opCode[1] == OP_ERROR) {
-				reportError();
-			} else if (opCode[1] == OP_DATAPACKET) {
-				// Check for the TFTP packets block number
-				byte[] blockNumber = { BuffByteArray[2], BuffByteArray[3] };
-
-				DataOutputStream dos = new DataOutputStream(byteOutOS);
-				dos.write(inBoundDatagramPacket.getData(), 4,
-						inBoundDatagramPacket.getLength() - 4);
-
-				//STEP 2.2: send ACK to TFTP server for received packet
-				sendAcknowledgment(blockNumber);
-			}
-
-		} while (!isLastPacket(inBoundDatagramPacket));
-		return byteOutOS;
-	}
-
-	private ByteArrayOutputStream pushFile() throws IOException {
-		ByteArrayOutputStream byteOutOS = new ByteArrayOutputStream();
-		int block = 1;
-		do {
-			System.out.println("TFTP Packet count: " + block);
-			block++;
-			BuffByteArray = new byte[PACKET_SIZE];
-			inBoundDatagramPacket = new DatagramPacket(BuffByteArray,
-					BuffByteArray.length, inetAddress,
-					datagramSocket.getPort());
 			
-			//STEP 2.1: send packet from TFTP server
-			datagramSocket.receive(inBoundDatagramPacket);
-
-			// Getting the first 4 characters from the TFTP packet
 			byte[] opCode = { BuffByteArray[0], BuffByteArray[1] };
 
-			if (opCode[1] == OP_ERROR) {
+			if (opCode[1] == ERROR) {
 				reportError();
-			} else if (opCode[1] == OP_DATAPACKET) {
+			} else if (opCode[1] == DATA) {
 				// Check for the TFTP packets block number
 				byte[] blockNumber = { BuffByteArray[2], BuffByteArray[3] };
 
@@ -143,22 +210,22 @@ public class client {
 				dos.write(inBoundDatagramPacket.getData(), 4,
 						inBoundDatagramPacket.getLength() - 4);
 
-				//STEP 2.2: send ACK to TFTP server for received packet
+				
 				sendAcknowledgment(blockNumber);
 			}
 
 		} while (!isLastPacket(inBoundDatagramPacket));
 		return byteOutOS;
 	}
+
+	
 
 	private void sendAcknowledgment(byte[] blockNumber) {
 
-		byte[] ACK = { 0, OP_ACK, blockNumber[0], blockNumber[1] };
+		byte[] bACK = { 0, ACK, blockNumber[0], blockNumber[1] };
 
-		// TFTP Server communicates back on a new PORT
-		// so get that PORT from in bound packet and
-		// send acknowledgment to it
-		DatagramPacket ack = new DatagramPacket(ACK, ACK.length, inetAddress,
+		
+		DatagramPacket ack = new DatagramPacket(bACK, bACK.length, inetAddress,
 				inBoundDatagramPacket.getPort());
 		try {
 			datagramSocket.send(ack);
@@ -183,10 +250,7 @@ public class client {
 		}
 	}
 
-	/*
-	 * TFTP packet data size is maximum 512 bytes on last packet it will be less
-	 * than 512 bytes
-	 */
+	
 	private boolean isLastPacket(DatagramPacket datagramPacket) {
 		if (datagramPacket.getLength() < 512)
 			return true;
@@ -194,12 +258,7 @@ public class client {
 			return false;
 	}
 
-	/*
-	 * RRQ / WRQ packet format
-	 * 
-	 * 2 bytes - Opcode; string - filename; 1 byte - 0; string - mode; 1 byte -
-	 * 0;
-	 */
+	
 	private byte[] createRequest(final byte opCode, final String fileName,
 			final String mode) {
 		byte zeroByte = 0;
